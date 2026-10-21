@@ -662,6 +662,33 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public void Preset_editor_saves_every_frame_only_for_png_and_jpg()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+
+        var preset = new Filee.Core.Presets.Preset { TargetFormat = "jpg" };
+        var vm = new PresetEditorViewModel(preset, loc);
+        Assert.True(vm.ShowSaveEveryFrame);
+        vm.SaveEveryFrame = true;
+        vm.FrameInterval = 5;
+        Assert.Equal("One minute of 30 fps video gives 360 pictures, at most 100,000 per video.", vm.FrameEstimate);
+        vm.FrameInterval = 5000; // out of range: clamped
+        Assert.True(vm.Apply());
+        Assert.True(preset.Media.SaveEveryFrame);
+        Assert.Equal(1000, preset.Media.FrameInterval);
+
+        // Ticked, then another target: nothing on screen says so any more, so it isn't saved.
+        vm = new PresetEditorViewModel(preset, loc);
+        Assert.True(vm.SaveEveryFrame);
+        vm.Target = vm.Targets.Single(t => t.Value == "webp");
+        Assert.False(vm.ShowSaveEveryFrame);
+        Assert.True(vm.Apply());
+        Assert.False(preset.Media.SaveEveryFrame);
+        Assert.Equal(1, preset.Media.FrameInterval);
+    }
+
+    [AvaloniaFact]
     public void Preset_editor_shows_and_saves_background_removal()
     {
         TestServices.EnsureInitialized("ko");
@@ -1009,6 +1036,37 @@ public class RenderTests
         // A value set outside the editor is offered instead of being lost.
         preset.Media.MaxHeight = 600;
         Assert.Equal("600p", new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>()).MaxHeight.Label);
+    }
+
+    [AvaloniaFact]
+    public void Preset_editor_offers_hardware_encoding_for_h264_and_hevc()
+    {
+        TestServices.EnsureInitialized("en");
+        var preset = new Filee.Core.Presets.Preset { TargetFormat = "mp4", Name = "Fast" };
+        var vm = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
+        Assert.True(vm.ShowHardwareEncoding);
+        Assert.False(vm.HardwareEncoding); // off unless asked for
+        vm.HardwareEncoding = true;
+
+        // AV1 and VP9 have no hardware path; HEVC does.
+        vm.VideoCodecChoice = vm.VideoCodecs.Single(c => c.Value == Filee.Core.Presets.VideoCodec.Av1);
+        Assert.False(vm.ShowHardwareEncoding);
+        vm.VideoCodecChoice = vm.VideoCodecs.Single(c => c.Value == Filee.Core.Presets.VideoCodec.Hevc);
+        Assert.True(vm.ShowHardwareEncoding);
+        vm.Target = vm.Targets.Single(t => t.Value == "webm");
+        Assert.False(vm.ShowHardwareEncoding);
+        vm.Target = vm.Targets.Single(t => t.Value == "avi");
+        Assert.False(vm.ShowHardwareEncoding);
+        vm.Target = vm.Targets.Single(t => t.Value == "mp3");
+        Assert.False(vm.ShowHardwareEncoding);
+        vm.Target = vm.Targets.Single(t => t.Value == "ts");
+        Assert.True(vm.ShowHardwareEncoding);
+        vm.Target = vm.Targets.Single(t => t.Value == "mov");
+        Assert.True(vm.Apply());
+        Assert.True(preset.Media.HardwareEncoding);
+        Assert.Equal(Filee.Core.Presets.VideoCodec.Hevc, preset.Media.VideoCodec);
+
+        Assert.True(new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>()).HardwareEncoding);
     }
 
     [AvaloniaFact]

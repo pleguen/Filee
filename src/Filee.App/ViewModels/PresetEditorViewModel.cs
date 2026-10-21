@@ -25,6 +25,23 @@ public sealed record Choice<T>(T Value, string Label, string? Detail = null) : I
     public override string ToString() => Label;
 }
 
+/// <summary>Selections bound to properties that always hold a value (a choice, the open page).</summary>
+public static class Choices
+{
+    /// <summary>
+    /// For the OnXxxChanged(oldValue, newValue) hook of such a property. A combo box or list box sets null when it
+    /// loses its selection (the selected item toggled off, its items replaced): the previous value is put back through
+    /// <paramref name="restore"/>, which also shows it in the control again. Returns true then, so the hook stops.
+    /// </summary>
+    public static bool Restore<T>(T? oldValue, T? newValue, Action<T> restore) where T : class
+    {
+        if (newValue is not null || oldValue is null)
+            return false;
+        restore(oldValue);
+        return true;
+    }
+}
+
 public sealed partial class PresetEditorViewModel : ObservableObject
 {
     private static readonly HashSet<string> LossyTargets = ["jpg", "webp", "avif", "heic"];
@@ -94,8 +111,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _wavFormat = WavFormats.First(f => f.Value == _edit.Media.WavFormat);
         _videoCodecValue = _edit.Media.VideoCodec;
         _audioCodecValue = _edit.Media.AudioCodec;
+        _hardwareEncoding = _edit.Media.HardwareEncoding;
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
+        _saveEveryFrame = _edit.Media.SaveEveryFrame;
+        _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
         _traceMode = TraceModes.First(m => m.Value == _edit.Trace.Mode);
         _traceColors = Math.Clamp(_edit.Trace.Colors, TracingOptions.MinColors, TracingOptions.MaxColors);
         _traceDetail = Math.Clamp(_edit.Trace.Detail, 0, 100);
@@ -158,9 +178,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowPdfSplit), nameof(ShowPdfCombine),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
-        nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec),
+        nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
-        nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote), nameof(ShowTrace))]
+        nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
+        nameof(ShowSaveEveryFrame), nameof(ShowTrace))]
     private Choice<string> _target;
 
     private VideoCodec _videoCodecValue;
@@ -181,11 +202,18 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         get => VideoCodecs.FirstOrDefault(c => c.Value == _videoCodecValue) ?? VideoCodecs[0];
         set
         {
-            // The combo box clears its selection while its list is replaced.
-            if (value is null || value.Value == _videoCodecValue)
+            // The combo box clears its selection while its list is replaced (or the selected item is toggled off):
+            // announcing the value shows it again.
+            if (value is null)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            if (value.Value == _videoCodecValue)
                 return;
             _videoCodecValue = value.Value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowHardwareEncoding));
         }
     }
 
@@ -199,7 +227,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         get => AudioCodecs.FirstOrDefault(c => c.Value == _audioCodecValue) ?? AudioCodecs[0];
         set
         {
-            if (value is null || value.Value == _audioCodecValue)
+            if (value is null)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            if (value.Value == _audioCodecValue)
                 return;
             _audioCodecValue = value.Value;
             OnPropertyChanged();
@@ -281,14 +314,44 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<int> _sampleRate;
     [ObservableProperty] private Choice<WavSampleFormat> _wavFormat;
     [ObservableProperty] private bool _removeAudio;
+
+    /// <summary>Encode H.264 / HEVC on the graphics chip when one works (MediaOptions.HardwareEncoding).</summary>
+    [ObservableProperty] private bool _hardwareEncoding;
     [ObservableProperty] private Choice<ArchiveLevel> _archiveLevel;
     [ObservableProperty] private bool _combineIntoOne;
+    [ObservableProperty] private bool _saveEveryFrame;
+
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(FrameEstimate))]
+    private int _frameInterval = 1;
+
+    /// <summary>How many pictures a minute of 30 fps video gives at the chosen interval, and the limit per video.</summary>
+    public string FrameEstimate => _loc.Format("presets.frame_estimate",
+        (int)Math.Ceiling(1800.0 / Math.Clamp(FrameInterval, 1, 1000)), MediaOptions.MaxFrames.ToString("N0", System.Globalization.CultureInfo.InvariantCulture));
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowTraceColors))]
     private Choice<TracingMode> _traceMode;
 
     [ObservableProperty] private int _traceColors;
     [ObservableProperty] private int _traceDetail;
+
+    // A combo box that loses its selection sets null: every choice keeps its value (see Choices.Restore).
+    partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => Target = v);
+    partial void OnResizeChanged(Choice<ResizeMode>? oldValue, Choice<ResizeMode> newValue) => Choices.Restore(oldValue, newValue, v => Resize = v);
+    partial void OnRotationChanged(Choice<ImageRotation>? oldValue, Choice<ImageRotation> newValue) => Choices.Restore(oldValue, newValue, v => Rotation = v);
+    partial void OnFlipChanged(Choice<ImageFlip>? oldValue, Choice<ImageFlip> newValue) => Choices.Restore(oldValue, newValue, v => Flip = v);
+    partial void OnPageSizeChanged(Choice<PdfPageSize>? oldValue, Choice<PdfPageSize> newValue) => Choices.Restore(oldValue, newValue, v => PageSize = v);
+    partial void OnLocationChanged(Choice<OutputLocation>? oldValue, Choice<OutputLocation> newValue) => Choices.Restore(oldValue, newValue, v => Location = v);
+    partial void OnConflictChanged(Choice<ConflictPolicy>? oldValue, Choice<ConflictPolicy> newValue) => Choices.Restore(oldValue, newValue, v => Conflict = v);
+    partial void OnTiffCompressionChanged(Choice<TiffCompression>? oldValue, Choice<TiffCompression> newValue) =>
+        Choices.Restore(oldValue, newValue, v => TiffCompression = v);
+    partial void OnMediaQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue) => Choices.Restore(oldValue, newValue, v => MediaQuality = v);
+    partial void OnMaxHeightChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => MaxHeight = v);
+    partial void OnAudioBitrateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioBitrate = v);
+    partial void OnAudioChannelsChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioChannels = v);
+    partial void OnSampleRateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => SampleRate = v);
+    partial void OnWavFormatChanged(Choice<WavSampleFormat>? oldValue, Choice<WavSampleFormat> newValue) => Choices.Restore(oldValue, newValue, v => WavFormat = v);
+    partial void OnArchiveLevelChanged(Choice<ArchiveLevel>? oldValue, Choice<ArchiveLevel> newValue) => Choices.Restore(oldValue, newValue, v => ArchiveLevel = v);
+    partial void OnTraceModeChanged(Choice<TracingMode>? oldValue, Choice<TracingMode> newValue) => Choices.Restore(oldValue, newValue, v => TraceMode = v);
 
     private string TargetId => Target.Value;
     private FormatCategory? TargetCategory => FormatRegistry.FindById(TargetId)?.Category;
@@ -325,6 +388,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowWav => TargetId is "wav" or "w64";
     /// <summary>MP4, MKV, MOV and WebM can be written with HEVC or AV1 besides their usual codec.</summary>
     public bool ShowVideoCodec => TargetIsVideo && VideoCodecs.Count > 1;
+    /// <summary>Hardware encoding applies to H.264 and HEVC only (not VP9, AV1, MPEG-2, …).</summary>
+    public bool ShowHardwareEncoding => TargetIsVideo && MediaCodecs.TakesHardwareEncoding(TargetId, _videoCodecValue);
     /// <summary>M4A / M4B can hold Apple Lossless besides AAC.</summary>
     public bool ShowAudioCodec => AudioCodecs.Count > 1;
     public bool ShowMediaQuality => TargetIsLossyMedia;
@@ -335,6 +400,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowArchiveOptions => ShowArchive && TargetId != FormatRegistry.Folder;
     /// <summary>"Extract" has nothing to set; a line says what it does instead.</summary>
     public bool ShowExtractNote => TargetId == FormatRegistry.Folder;
+    /// <summary>"Save every frame" of a video: PNG and JPG (format ids, <see cref="MediaOptions.FrameTargets"/>).</summary>
+    public bool ShowSaveEveryFrame => MediaOptions.FrameTargets.Contains(TargetId);
     /// <summary>
     /// Tracing options: raster images reach SVG (and DXF / DWG through it) only by tracing. For other sources (a
     /// drawing, a CAD file) the options are ignored.
@@ -413,6 +480,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.WavFormat = WavFormat.Value;
         media.VideoCodec = MediaCodecs.Effective(TargetId, _videoCodecValue);
         media.AudioCodec = MediaCodecs.Effective(TargetId, _audioCodecValue);
+        media.HardwareEncoding = HardwareEncoding;
+        // Only where the option is shown: a box ticked for PNG and left behind by another target saves nothing.
+        media.SaveEveryFrame = ShowSaveEveryFrame && SaveEveryFrame;
+        media.FrameInterval = media.SaveEveryFrame ? Math.Clamp(FrameInterval, 1, 1000) : 1;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;

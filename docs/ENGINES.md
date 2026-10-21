@@ -18,6 +18,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWPX writer** | built in | **DOCX (+ DOCM/DOTX/DOTM), XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/PPSX), PDF, HTML, EPUB, MOBI/AZW3, FB2, HWPX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); ODT, RTF, reStructuredText, LaTeX → HWPX with Pandoc |
 | **DOCX writer** | built in | **HWPX (and HWP through rhwp), PDF, HTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
 | PDF text | built in (PdfPig) | **PDF → TXT** (reading order, also two columns; no OCR) |
+| PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML** |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard ↔ CSV**; spreadsheets and contacts reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
@@ -29,7 +30,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium) |
-| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG or a still frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, images → HEIC |
+| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, images → HEIC |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
@@ -75,9 +76,30 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   (`vcruntime` component) is copied next to `gswin64c.exe`, so it runs on PCs without the VC++ Redistributable.
 
 To bump a version, change `url`, `sha256` and `size` in engines.json together, run
-`pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. When the LibreOffice team retires a
-version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working: keep the pinned version
-current.
+`pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. For rhwp, also update `RHWP_VERSION`,
+`RHWP_COMMIT` and `RUST_TOOLCHAIN` in `build/build-linux-native.py` (see below); CI fails until they match. When the
+LibreOffice team retires a version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working:
+keep the pinned version current.
+
+## Linux builds for older glibc
+
+Linux packages run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release is linked on Ubuntu 24.04 (needs glibc 2.39).
+The `linux-native` job of `.github/workflows/portable.yml` builds it from its pinned, unmodified source on Ubuntu 22.04
+(x64 and arm64) with `build/build-linux-native.py`:
+
+- `rhwp`: `cargo build --release --locked --bin rhwp` at the tag's commit with its pinned Rust toolchain, in the
+  layout of rhwp's release archive.
+- `check` (also run on its own): fails when engines.json pins another rhwp version than the script builds.
+
+The Linux package jobs pass the result to `build/build-portable.ps1 -RhwpOverride <dir>`. Local builds without it use
+the downloaded rhwp (fine on the machine that builds it). SharpHook's native libraries are packaged as they come
+from NuGet: SharpHook 8.0.0 built its X11 back ends against glibc 2.38, 8.0.1 needs glibc 2.34 at most again.
+
+`build/check-elf-glibc.py` lists the newest GLIBC version every ELF file in the package needs and fails above 2.35,
+and the packages are unpacked and started on Ubuntu 22.04 (`build/smoke-portable.ps1`: CLI, rhwp conversions, loading
+the X11 input hook back end; `build/smoke-launch-app.py`: the app under Xvfb). If a SharpHook or engine update fails
+these checks, keep the previous version until upstream builds for an older glibc again, or build the binary from its
+pinned source in `build/build-linux-native.py` like rhwp (PR #113 did this for SharpHook 8.0.0's libuiohook back ends).
 
 ## Images and vector graphics
 
@@ -373,6 +395,33 @@ it. DOCX → DOCX is no edge; the Word variants are the Office Open XML engine's
 
 Password-protected PDFs fail with a clear message. Not converted: tables (their cells come out as paragraphs in
 reading order), vector drawings on text pages, form fields and annotations other than links.
+
+## PDF → PPTX
+
+`Pdf/PdfSlidesConverter.cs` turns a PDF into a PowerPoint deck of pictures: every page is rendered (PDFium, as for
+PDF → images) and becomes one picture on its own slide. The slides look exactly like the PDF but are **not
+editable**: there are no text boxes to change, the PDF's layout is not rebuilt. PDF → DOCX is the editable route.
+
+- **Slide size** is the first page's own size (an A4 portrait PDF gives A4 portrait slides, a PDF exported from a
+  16:9 deck gives 16:9 slides), within PowerPoint's limits of 1 to 56 inches a side. Every page, also one of another
+  size or orientation (pages turned in the PDF are shown turned), is fitted onto the slide without cropping and
+  centred on white.
+- **Resolution** is the preset's render DPI, at least 150 and at most 600; a page larger than 25 megapixels at that
+  resolution (a poster) is rendered at a lower one. The preset's page range picks the pages.
+- **Pictures** are JPEG at the preset's quality (90 by default, as the "PPTX (slides)" preset sets it). Pages are
+  rendered on white, as PDF viewers show them, so they have no transparency that would need PNG, and JPEG keeps a
+  long deck at a size that is easy to send (an A4 text page at 150 dpi is a few hundred KB).
+- **Speaker notes** hold the page's text, read like PDF → TXT (reading order, the invisible OCR layer of scans
+  included), so it can still be searched and copied. Pages without text get no notes; when PdfPig cannot read a PDF
+  that PDFium renders, the deck is written without notes.
+- The package (`Pdf/PictureDeckWriter.cs`) is written by hand: presentation, one slide master with a blank layout,
+  a theme, the slides with their pictures, a notes master and notes slides, and the document properties. The tests
+  validate it with the Open XML SDK and read it back with Filee's own PPTX reader.
+- The edge is `DirectOnly`: the route planner uses it only for a PDF converted to PPTX. A Word document or an image is
+  never turned into picture slides through PDF, and a picture deck is never a step towards ODP, PPSX or another
+  format (a test checks that every other pair of formats keeps its route).
+
+Password-protected PDFs fail with the same message as PDF → DOCX.
 
 ## Office Open XML variants
 
@@ -752,8 +801,8 @@ Filee (with the GPL source offer), then an `engines.json` component and an optio
 ## FFmpeg
 
 `Media/FfmpegConverter.cs` converts every video format to every video format, to animated GIF or APNG, to a still PNG
-frame, to every audio format (the sound track) and to SRT, ASS and WebVTT (the subtitles); every audio format to every
-audio format; and GIF, APNG and PNG to MP4, WEBM and MOV.
+frame or a folder of every frame, to every audio format (the sound track) and to SRT, ASS and WebVTT (the subtitles);
+every audio format to every audio format; and GIF, APNG and PNG to MP4, WEBM and MOV.
 Same-format edges exist too, so "MP4 720p" works on MP4 files and "MP3 128k" on MP3 files.
 
 - The download is the gyan.dev **9.0.2 "full_build-shared"** Windows build (GPL-3.0, run as a separate program).
@@ -807,6 +856,29 @@ Same-format edges exist too, so "MP4 720p" works on MP4 files and "MP3 128k" on 
   for the rest. The encoders are looked up with `ffmpeg -encoders` once per FFmpeg, so a copy the user picked without
   x265 or AV1 fails with a clear message instead of an FFmpeg error. x265 and SVT-AV1 log only errors
   (`-x265-params log-level=error`, `SVT_LOG=1`).
+- **Hardware encoding** (*Hardware acceleration* in the video card, `MediaOptions.HardwareEncoding`; off by default and
+  for older presets, so nobody's results change without asking). H.264 and HEVC encodes (not VP9, AV1 and the
+  MPEG-style codecs, not stream copies, not pictures → video) go to the graphics chip (`Media/HardwareVideo.cs`,
+  `Media/HardwareProbe.cs`):
+
+  | System | Tried in this order |
+  |---|---|
+  | Windows | `*_nvenc` (NVIDIA), `*_qsv` (Intel Quick Sync), `*_amf` (AMD) |
+  | macOS | `*_videotoolbox` with constant quality (Apple Silicon), then with a bitrate (Intel Macs reject `-q:v`) |
+  | Linux | `*_nvenc`, then `*_vaapi` on `/dev/dri/renderD128` (`-vaapi_device`, frames uploaded with `format=nv12,hwupload`) |
+
+  FFmpeg lists encoders the computer can't run (NVENC without an NVIDIA card), so only the ones `ffmpeg -encoders`
+  lists are tried, each first with a test encode with the real options (0.1 s of `testsrc` at 256 × 144 to the null
+  muxer, 15 s limit). The first that succeeds is used; results are kept per FFmpeg executable, encoder, rate control
+  and bit depth until Filee restarts, and written to the log. Quality: *High/Balanced/Small* become quantizer 19/24/29
+  for H.264 and 23/27/31 for HEVC (one above x264's and x265's CRF: hardware encoders spend bits less wisely) as NVENC
+  `-rc vbr -cq N -b:v 0 -preset p5`, Quick Sync `-global_quality N -preset medium` (ICQ), AMF `-rc cqp -qp_p N -qp_i N−2`
+  (`-quality balanced`) and VA-API `-rc_mode CQP -qp N`; VideoToolbox gets `-q:v` 70/60/50, or on Intel Macs
+  `-b:v` from 0.14/0.09/0.05 bits per pixel per frame (× 0.65 for HEVC). 8-bit video is NV12 (H.264 High, HEVC Main);
+  10-bit and HDR sources stay P010 HEVC Main 10 with their colour tags when the encoder passes a 10-bit test encode,
+  otherwise x265 encodes them. HEVC keeps the `hvc1` tag in MP4/M4V/MOV. When a hardware encode fails anyway (a
+  picture too large for the chip, a driver error), the partial output is deleted and the file is encoded again with
+  x264/x265; that is logged, not shown as a failure.
 - DSD (DSF, DFF) decodes at 2.8 MHz or more: lossless and PCM targets get 88.2 kHz, Vorbis and WMA 44.1 kHz, the
   other lossy encoders their nearest supported rate.
 - Subtitle extraction takes the first text subtitle track (SubRip, ASS/SSA, WebVTT, MP4 timed text, CEA-608, …).
@@ -818,12 +890,34 @@ Same-format edges exist too, so "MP4 720p" works on MP4 files and "MP3 128k" on 
   FLAC. Portrait phone videos are turned upright. Odd sizes are evened out, frame rates that MPEG-2/MXF/MPEG-4 part 2
   cannot store are converted, and channels WMA or AMR cannot hold are mixed down.
 - Progress comes from `-progress` (position ÷ duration from ffprobe); the GIF palette pass reports per-frame stats of
-  a discarded copy of its frames. Cancelling kills the process tree and deletes the partial output. There is no
-  time limit, but FFmpeg is stopped when it reports nothing for 10 minutes. At most two conversions run at a time
-  (FFmpeg's encoders use every core themselves).
+  a discarded copy of its frames. Cancelling kills the process tree, waits (up to 10 seconds) until it has exited and
+  deletes the partial output. There is no time limit, but FFmpeg is stopped when it reports nothing for 10 minutes.
+  At most two conversions run at a time (FFmpeg's encoders use every core themselves).
 - Video → PNG writes one still frame (a tenth into the video, where the picture has usually faded in); the image
   engines turn it into JPG, WEBP, PDF, …. The GIF edge costs more, so these routes never go through an animated GIF
   of the whole video.
+- **Every frame** (*Save every frame of a video* on a PNG or JPG preset, `MediaOptions.SaveEveryFrame`; the presets
+  "Extract frames (PNG)" and "Extract frames (JPG)", on no donut): `Media/FrameSequenceWriter.cs` writes
+  `frame_000001.png`, `frame_000002.png`, … into one folder, named by the output rule with `_frames` added
+  (`clip_frames`, `clip_frames (2)`; skipped, or filled over like an extracted archive, by the conflict rule).
+  - Routes: the frame edges (`ConversionEdge.FrameSequence`, video → PNG and video → JPG) are taken only when
+    `Preset.SavesFramesOf` the file (the option is set, the target is PNG or JPG and the file is a video), and then as
+    the whole route (`RoutePlanner.Plan(from, to, frames: true)`). Without the option video → JPG stays the still frame
+    above, which the image engines turn, resize and so on; other files and targets ignore the option.
+  - *Every Nth frame* (1–1000) keeps frames 1, N + 1, 2N + 1, … (`select`, `-fps_mode vfr`). Otherwise every decoded
+    frame is written once (`-fps_mode passthrough`): a variable frame rate phone video gives as many pictures as it
+    has frames, not one per 1/30 s with the slow parts repeated. The pictures are numbered, not named by time.
+  - Only the first video stream is read (`-map 0:V:0`). Pixels are made square and portrait videos are turned
+    upright, as for the still frame; nothing else of the image options is applied (no resizing, rotating or
+    metadata). JPG uses the preset's quality (100 → `-q:v 2`, 90 → 5, 1 → 31). HDR video (PQ, HLG) is not
+    tone-mapped, so its frames look flat and grey; 10-bit video becomes 16-bit PNG.
+  - Before anything is written the pictures are estimated (duration × frame rate ÷ interval). More than 100,000
+    (`MediaOptions.MaxFrames`, about an hour at 30 fps), or more than the free space of the output drive (estimated at
+    1.5 bytes a pixel for PNG, 3 for 10-bit video, 0.25 for JPG), fails with a reason in the user's language
+    (`ConversionRefusedException`); a file that doesn't say its length or frame rate is not checked. The editor shows
+    how many pictures a minute of 30 fps video gives at the chosen interval.
+  - The frames go into a hidden folder next to the output and are moved into place when FFmpeg has finished, so a
+    cancelled or failed run leaves no half-filled folder.
 - Pictures → MP4/WEBM/MOV go through a full-size PNG from the image engines (HEIC → PNG → MOV): a 5-second still at
   30 fps, one quality step above the preset (identical frames cost almost nothing; x264 `-tune stillimage`). The
   PNG's ICC profile is read (`-flags2 +icc_profiles`), so primaries and transfer are tagged as the photo's (Display

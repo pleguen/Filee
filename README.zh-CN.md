@@ -49,7 +49,7 @@
   安装时可以添加资源管理器菜单、登录时启动、`filee` 命令和可选引擎。
 - **macOS 14 及以上**（预览）解压 `osx-arm64` 或 `osx-x64` 包并运行 `./install.sh`。
   目前尚未公证，首次启动时请在系统设置 → 隐私与安全性中点 **仍要打开**。
-- **Linux x64、ARM64**（预览）解压后运行 `./install.sh`（无需 root，需要 Python 3）。
+- **Linux x64、ARM64**（预览，Ubuntu 22.04 及以上）解压后运行 `./install.sh`（无需 root，需要 Python 3）。
   拖动手势需要 X11，Wayland 下请使用拖放区域和文件管理器的右键菜单。
 
 有新版本时 Filee 会在菜单中提示，更新时保留设置和引擎。
@@ -82,7 +82,7 @@
 |---|---|
 | **图片**：JPG、PNG、WEBP、AVIF、TIFF、BMP、GIF、APNG、ICO、ICNS、JPEG XL、JPEG 2000、PSD/PSB、TGA、PPM、HEIC、QOI、DDS、PCX、MNG、CUR 等；GIMP XCF、相机 RAW（CR2、CR3、NEF、ARW、DNG 等）、DICOM、OpenEXR、HDR 仅读取 | 上述格式互转（HEIC⁵）、PDF、SVG（描摹）、缩放、灰度 |
 | **矢量图**：SVG、SVGZ、EMF、WMF、AI · EPS、PS¹ · CDR、VSD、CGM、ODG、FODG² | PDF（矢量）、PNG 等图片、SVG ↔ SVGZ、SVG → DXF/DWG、PDF → EPS/PS¹、SVG → EMF、WMF、ODG² |
-| **PDF** | DOCX、HWPX、TXT、PNG、JPG、TIFF、CBZ、SVG²；合并、拆分、页码范围 |
+| **PDF** | DOCX、HWPX、TXT、PNG、JPG、TIFF、CBZ、PPTX（每页一张图片）、SVG²；合并、拆分、页码范围 |
 | **文档**：DOCX、DOCM、DOTX、EML、Outlook MSG · DOC、ODT、FODT、OTT、RTF、WPS、WPD、Pages、ClarisWorks、MacWrite、T602 等² | PDF、DOCX、HWPX、EPUB、TXT、HTML、MSG → EML · ODT、FODT、OTT² |
 | **表格**：XLSX、XLSM、XLS、XLT、ODS、CSV、TSV · OTS、FODS、Numbers、ET² | PDF、XLSX、ODS、CSV、TSV、JSON、HWPX、HTML · XLT、OTS² |
 | **演示文稿**：PPTX、PPTM、POTX、PPSX · PPT、ODP、OTP、FODP、Keynote² | PDF、PNG、JPG、DOCX、HWPX · OTP² |

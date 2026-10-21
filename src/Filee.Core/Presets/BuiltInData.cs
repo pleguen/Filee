@@ -65,6 +65,8 @@ public static class BuiltInData
             Id = "pdf-split", NameKey = "preset.split_pdf", TargetFormat = "pdf",
             Pdf = { SplitPages = true }, Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" },
         },
+        .. PdfSlidesPresets(),
+        .. FramePresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
         new() { Id = "to-hwpx", Name = "HWPX", TargetFormat = "hwpx" },
         .. HwpPresets(),
@@ -79,6 +81,25 @@ public static class BuiltInData
         .. CodecAndSubtitlePresets(),
         .. ModelPresets(),
         .. TracePresets(),
+    ];
+
+    /// <summary>
+    /// PDF → PowerPoint with a picture of each page on its own slide (added in settings schema 18). JPEG at 90 like the
+    /// JPG preset; the render DPI is the PDF default (150), which the converter never goes below.
+    /// </summary>
+    public static List<Preset> PdfSlidesPresets() =>
+    [
+        new() { Id = "pdf-slides", NameKey = "preset.pdf_slides", TargetFormat = "pptx", Image = { Quality = 90 } },
+    ];
+
+    /// <summary>
+    /// Every frame of a video as PNG or JPG pictures in a folder (added in settings schema 19), on no donut: a long
+    /// video gives thousands of files, so users add them in Settings → Toolbar.
+    /// </summary>
+    public static List<Preset> FramePresets() =>
+    [
+        new() { Id = "extract-frames-png", NameKey = "preset.extract_frames_png", TargetFormat = "png", Media = { SaveEveryFrame = true } },
+        new() { Id = "extract-frames-jpg", NameKey = "preset.extract_frames_jpg", TargetFormat = "jpg", Media = { SaveEveryFrame = true } },
     ];
 
     /// <summary>Raster → SVG tracing, in colour and as black line art (added in settings schema 16).</summary>
@@ -289,7 +310,7 @@ public static class BuiltInData
         {
             Id = "pdf", NameKey = "profile.pdf",
             Extensions = ["pdf"],
-            PresetIds = ["to-png", "to-jpg", "pdf-long-image", "to-docx", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp", "to-tiff", "pdf-split", "merge-pdf"],
+            PresetIds = [.. PdfDonut],
         },
         new()
         {
@@ -315,6 +336,17 @@ public static class BuiltInData
             PresetIds = ["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"],
         },
     ];
+
+    /// <summary>
+    /// The PDF donut. Settings schema 18 put "PPTX (slides)" after DOCX in place of TIFF (a donut holds 12 slices); TIFF
+    /// stays a preset to add in Settings → Toolbar.
+    /// </summary>
+    public static readonly IReadOnlyList<string> PdfDonut =
+        ["to-png", "to-jpg", "pdf-long-image", "to-docx", "pdf-slides", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp", "pdf-split", "merge-pdf"];
+
+    /// <summary>The PDF donut of settings schema 9 to 17, which schema 18 replaces when the user never changed it.</summary>
+    public static readonly IReadOnlyList<string> PdfDonutBefore18 =
+        ["to-png", "to-jpg", "pdf-long-image", "to-docx", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp", "to-tiff", "pdf-split", "merge-pdf"];
 
     /// <summary>Excel, OpenDocument and CSV sheets (split from "office" in settings schema 5).</summary>
     public static ToolbarProfile SpreadsheetProfile() => new()
